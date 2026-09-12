@@ -172,17 +172,32 @@ func New(dsnFunc DSNFunc, cfg Config) *Pool {
 	return p
 }
 
-// Close cancels the reconciler and closes every tenant pool.
+// Close cancels the reconciler and closes every tenant pool. The pools are
+// closed in parallel: each pgxpool.Close blocks until its in-flight
+// connections are returned, so closing them one by one would serialize the
+// whole drain. Close returns once all pools are shut down.
 func (p *Pool) Close() {
 	p.cancel()
+
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	var pools []*pgxpool.Pool
 	for _, tp := range p.tenants {
-		tp.base.Close()
+		pools = append(pools, tp.base)
 		if tp.burst != nil {
-			tp.burst.Close()
+			pools = append(pools, tp.burst)
 		}
 	}
+	p.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	for _, pool := range pools {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pool.Close()
+		}()
+	}
+	wg.Wait()
 }
 
 // Register creates the base and (if e.Burst > 0) burst pools for tenantID.
