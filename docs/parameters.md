@@ -19,6 +19,79 @@ c, err := p.Acquire(ctx)             // routes to acme's base/burst pools
 `Register` must run before the first `Acquire` for a tenant; call it at
 startup from a config table or `tpool.DefaultClasses()`.
 
+## Per-tenant DSNs and authentication
+
+`New` takes a `DSNFunc` — a callback that maps the tenant ID to a DSN. The
+point of the indirection is that tpool never sees your credential storage:
+the callback is called once per pool at `Register` (a second time for the
+burst pool), and the returned DSN is parsed with pgx `ParseConfig`. The DSN
+never leaves your process, so it can come from a map, an env var, a config
+table, or a secrets manager.
+
+### Three authentication models
+
+Same database, different data isolation:
+
+| Model | DSN per tenant | Isolation boundary | Attribution |
+|---|---|---|---|
+| **Shared role + RLS** | `postgres://app:pass@db/app` for all | none at auth; data hidden by `tenant_id` + RLS policies | `application_name` only |
+| **One LOGIN role per tenant** | `postgres://acme:secret@db/app` (recommended for hard isolation) | **the database itself**: a tenant's queries can never reach another tenant's data, even if app logic is wrong | `application_name` + `usename` in `pg_stat_activity` |
+| **Shared login + `SET ROLE`** | one login, plus `options=-c role=<tenant>` (or `SET ROLE` after connect) | auth role, no re-auth | `application_name` only — **`usename` stays the login role** (fits testing exactly; see below) |
+
+The suite tests use one LOGIN role per tenant on purpose: attribution lands in
+`pg_stat_activity.usename` because every session authenticates *as* the
+tenant. A `role=`/`SET ROLE` approach changes `current_user` but not the
+login (`usename`) — fine for authorization, useless for session attribution.
+
+Beyond auth, the callback is a **shard router**: return a different `dbname`
+or host per tenant to spread tenants across databases/machines.
+
+```go
+// Same role/password for everyone (quick start).
+dsn := func(tenant string) string {
+    return "postgres://app:pass@db:5432/app?sslmode=require"
+}
+
+// One role per tenant, password read from a secrets vault (never hardcoded).
+dsn := func(tenant string) string {
+    secret, _ := vault.Get("postgres/" + tenant) // per-tenant password
+    return fmt.Sprintf("postgres://%s:%s@db:5432/app?sslmode=require", tenant, url.QueryEscape(secret))
+}
+
+// Sharding: spread tenants across databases on the same server.
+dsn := func(tenant string) string {
+    shard := "shard" + strconv.Itoa(abs(hash(tenant))%4)
+    return fmt.Sprintf("postgres://app:pass@db:5432/%s", shard)
+}
+```
+
+### What tpool overrides in your DSN
+
+The DSN configures the **connection** (host, user, password, sslmode). The
+**pool** knobs and attribution are always owned by tpool, set after
+`ParseConfig` and overriding whatever the DSN said:
+
+- `pool_max_conns`, `pool_min_conns`, `pool_max_conn_lifetime`,
+  `pool_max_conn_idle_time`, `pool_health_check_period` → taken from the
+  `Entitlement` and `Config`, not from the DSN. Don't put them in the tenant
+  DSN; they'd be silently replaced.
+- `connect_timeout` → always the fixed 5s (`connectTimeout`); a dial must
+  never hang behind the budget.
+- `application_name` → always the tenant ID (base) or `tenantID+BurstSuffix`
+  (burst, default `"!b"`). This is the attribution key for `pg_stat_activity`;
+  don't set it in the DSN or you'll lose per-tenant visibility.
+
+### Credential hygiene
+
+- The DSNFunc is the only place credentials exist; keep the returned DSN out
+  of logs (don't `log.Println(p.Stat())`-adjacent DSNs, and never print them
+  in error paths that include the configured DSN).
+- Rotate passwords at the vault, not in the code: `Register` re-reads on every
+  call, so a restart (or re-`Register`) picks up rotation.
+- Different roles per tenant need the roles created beforehand — see the
+  integration suite's `setupRoles` for the pattern, run as privileged once at
+  deploy time.
+
 | Parameter | Default | Controls | Change it when |
 |---|---|---|---|
 | `GlobalMaxConns` | 500 | cap on live sockets (all tenants combined) | always set it: keep it below the server's `max_connections` (e.g. 500 with max_conn=1000) |

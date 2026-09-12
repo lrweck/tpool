@@ -27,7 +27,17 @@ type TenantClass struct {
 	BurstTTL time.Duration
 }
 
-// DSNFunc maps a tenant ID to the DSN used to build its pools.
+// DSNFunc maps a tenant ID to the DSN used to build its pools. It is called
+// once per pool at Register (a second time for the burst pool) and the result
+// is parsed with pgx.ParseConfig. Because it is a callback, it may look up a
+// per-tenant password or certificate from a secrets store, or route different
+// tenants to different databases or shard hosts — the DSN never leaves the
+// process.
+//
+// tpool overrides whatever the returned DSN says about pool limits
+// (pool_max_conns, pool_min_conns, lifetime, idle, health check), the connect
+// timeout (fixed 5s) and application_name (set to the tenant ID, or
+// tenantID+BurstSuffix for burst sockets, for pg_stat_activity attribution).
 type DSNFunc func(tenant string) string
 
 // DefaultClasses returns the shipped small/medium/large profiles. Classes

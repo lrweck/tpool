@@ -90,6 +90,8 @@ for _, c := range tpool.DefaultClasses() { // small, medium, large
 
 `DefaultClasses()` ships `small (1/5+2)`, `medium (1/10+4)`, `large (1/15+5)` — caps differ, the floor is always 1.
 
+The `DSNFunc` decides *how* each tenant authenticates: the same role for all (quick start above), **one LOGIN role per tenant** (hard isolation; the tenant shows up as `usename` in `pg_stat_activity`), or even different databases / shard hosts per tenant. tpool always owns `application_name` (for attribution) and forces `connect_timeout=5s`, overriding what the DSN says for the pool knobs. See [Per-tenant DSNs and authentication](docs/parameters.md#per-tenant-dsns-and-authentication).
+
 ## Using a connection
 
 **Low-level** — `Acquire` returns a `*Conn` wrapping a pgx connection:
