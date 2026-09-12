@@ -22,6 +22,14 @@ The usual multitenant setup is "one big pool + RLS". It breaks in a familiar way
 | **Reconciler** | re-anchors the budget to real socket counts every 3s, repairing leaked tokens from failed dials |
 | **Attribution** | every socket carries `application_name` (`<tenant>` base vs `<tenant>!b` burst), visible in `pg_stat_activity` |
 
+## Install
+
+Requires Go 1.27+.
+
+```
+go get github.com/lrweck/tpool@v0.1.0
+```
+
 ## Quick start
 
 `go run`-ready:
