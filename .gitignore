@@ -1,0 +1,14 @@
+# Dev-only local infrastructure — not part of the library
+/compose.yaml
+/postgres.conf
+
+# Build artifacts
+/pool-demo
+/pool-demo.html
+*.test
+*.out
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
