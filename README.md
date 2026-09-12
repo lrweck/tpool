@@ -119,7 +119,7 @@ if err := dc.QueryRow(ctx, "SELECT balance FROM accounts WHERE id=$1", id).Scan(
 
 `*Conn` exposes `Exec`, `Query`, `QueryRow`, `Begin`, `BeginTx`, `SendBatch`, `CopyFrom`, `Ping`, and `Conn` (raw pgx for the corner cases).
 
-**Convenience** — `p.Exec`, `p.Query`, `p.QueryRow`, `p.Begin`, `p.SendBatch`, and `p.CopyFrom` route by context and skip the acquire/release dance:
+**Convenience** — `p.Exec`, `p.Query`, `p.QueryRow`, `p.Begin`, `p.BeginTx`, `p.SendBatch`, `p.CopyFrom`, and `p.Ping` route by context and skip the acquire/release dance:
 
 ```go
 tx, err := p.Begin(tpool.WithTenant(ctx, "acme"))
