@@ -191,11 +191,7 @@ func (p *Pool) Close() {
 
 	var wg sync.WaitGroup
 	for _, pool := range pools {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			pool.Close()
-		}()
+		wg.Go(func() { pool.Close() })
 	}
 	wg.Wait()
 }
