@@ -226,3 +226,5 @@ Full numbers, the acquire flow, lock contention analysis, and throughput tables:
 
 - [docs/parameters.md](docs/parameters.md) — full `Config` reference, the Acquire operation, the timeout cascade, production values.
 - [docs/performance.md](docs/performance.md) — measurements: cost per step, lock-free `Budget` design, throughput by pool size.
+
+Released under the [MIT License](LICENSE).
